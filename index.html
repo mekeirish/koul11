@@ -1029,17 +1029,6 @@ background:none; color:var(--primary); padding:8px; border-radius:5px; margin-bo
             return `<div style="font-size:0.85rem;color:#aaa">${o.itemsText}</div>`;
         }
 
-        function buildMapIframe(originLat, originLng, destLat, destLng) {
-            if(!destLat || !destLng) return '';
-            const dest = `${destLat},${destLng}`;
-            const src = (originLat && originLng)
-                ? `https://maps.google.com/maps?saddr=${originLat},${originLng}&daddr=${dest}&dirflg=b&output=embed`
-                : `https://maps.google.com/maps?daddr=${dest}&dirflg=b&output=embed`;
-            return `<div style="margin-top:10px;border-radius:10px;overflow:hidden;border:1px solid #444;">
-                <iframe src="${src}" width="100%" height="220" style="border:0;display:block" allowfullscreen loading="lazy"></iframe>
-            </div>`;
-        }
-
         function renderProOrders() {
             const l = document.getElementById('orders-list-pro');
             l.innerHTML = '<h3>Commandes Actives</h3>';
@@ -1047,14 +1036,12 @@ background:none; color:var(--primary); padding:8px; border-radius:5px; margin-bo
                 let statusColor = o.status === 'new' ? 'white' : (o.status === 'waiting' ? 'orange' : 'cyan');
                 let statusText = o.status === 'new' ? 'REÇUE' : (o.status === 'waiting' ? 'PUBLIÉE' : (o.livName ? `Prise par ${o.livName}` : 'EN COURS'));
                 const itemsHtml = buildItemsHtml(o);
-                const mapHtml = (o.clientLat && o.clientLng) ? buildMapIframe(currentRes.lat || null, currentRes.lng || null, o.clientLat, o.clientLng) : '';
                 l.innerHTML += `<div class="order-card-pro" style="border-left: 5px solid ${statusColor}">
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
                         <b>${o.client}</b><small style="color:${statusColor}">${statusText}</small>
                     </div>
                     <div style="margin-bottom:8px">${itemsHtml}</div>
                     <div style="margin-top:8px;font-weight:bold;font-size:1rem;color:var(--primary)">${o.total} DZD</div>
-                    ${mapHtml}
                     <div class="order-actions">
                         <a href="tel:${o.tel}" class="btn-call">APPELER</a>
                         ${o.status === 'new' ? `<button class="btn-finish" onclick="updateOrderStatus(${o.id}, 'waiting')">PUBLIER</button>` : ''}
@@ -1116,51 +1103,44 @@ background:none; color:var(--primary); padding:8px; border-radius:5px; margin-bo
                         const isBeingShippedByMe = o.status === 'shipping' && o.livId === currentLivreur.id;
                         const hasPicked = pickedOrders.includes(o.id);
 
-                        // Iframe interne resto->client
-                        const iframeHtml = (o.clientLat && o.clientLng)
-                            ? buildMapIframe(res.lat || null, res.lng || null, o.clientLat, o.clientLng)
+                        // Boutons navigation Google Maps (ouvrent l'appli externe)
+                        const resNavUrl = (res.lat && res.lng)
+                            ? `https://www.google.com/maps/dir/?api=1&destination=${res.lat},${res.lng}&travelmode=driving`
+                            : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(res.name)}`;
+                        const clientNavUrl = (o.clientLat && o.clientLng)
+                            ? `https://www.google.com/maps/dir/?api=1&destination=${o.clientLat},${o.clientLng}&travelmode=driving`
                             : '';
+
+                        const navButtons = isBeingShippedByMe ? `
+                            <div style="display:flex;gap:8px;margin-top:8px;">
+                                <a href="${resNavUrl}" target="_blank" style="flex:1;display:flex;align-items:center;justify-content:center;gap:5px;background:#1a2a3a;border:1px solid #2196F3;border-radius:7px;padding:9px 6px;color:#2196F3;font-size:0.8rem;font-weight:bold;text-decoration:none;">🏠 Vers le restaurant</a>
+                                ${clientNavUrl ? `<a href="${clientNavUrl}" target="_blank" style="flex:1;display:flex;align-items:center;justify-content:center;gap:5px;background:#1a3a1a;border:1px solid #28a745;border-radius:7px;padding:9px 6px;color:#28a745;font-size:0.8rem;font-weight:bold;text-decoration:none;">📍 Vers le client</a>` : ''}
+                            </div>` : '';
 
                         l.innerHTML += `
                             <div class="order-card-pro">
                                 <b style="color:var(--primary)">${res.name}</b>
-                                ${iframeHtml}
                                 <div class="order-actions" style="margin-top:10px">
                                     ${canTake ? `<button class="btn-finish" onclick="takeOrd(${res.id}, ${o.id})">PRENDRE</button>` : ''}
                                     ${o.status === 'waiting' ? `<button class="btn-reject" onclick="ignoreOrd(${o.id})">MASQUER</button>` : ''}
                                     ${isBeingShippedByMe ? `<a href="tel:${o.tel}" class="btn-call">APPELER</a>` : ''}
-                                    ${isBeingShippedByMe && !hasPicked ? `<button class="btn-finish" style="background:#FF9800" onclick="markPickedAndNav(${o.clientLat||0},${o.clientLng||0},${res.lat||0},${res.lng||0},${o.id})">RÉCUPÉRER</button>` : ''}
-                                    ${isBeingShippedByMe && hasPicked ? `<button class="btn-finish" style="background:#FF9800" onclick="markPickedAndNav(${o.clientLat||0},${o.clientLng||0},${res.lat||0},${res.lng||0},${o.id})">🗺 VERS CLIENT</button>` : ''}
+                                    ${isBeingShippedByMe && !hasPicked ? `<button class="btn-finish" style="background:#FF9800" onclick="markPicked(${o.id})">RÉCUPÉRER</button>` : ''}
                                     ${isBeingShippedByMe ? `<button class="btn-finish" style="background:${hasPicked ? '#28a745' : '#555'};cursor:${hasPicked ? 'pointer' : 'not-allowed'}" onclick="${hasPicked ? `openValPin(${res.id}, ${o.id})` : `setNotif('Cliquez sur RÉCUPÉRER d abord')`}">VALIDER LIVRAISON</button>` : ''}
                                 </div>
-                                ${isBusy && o.status === 'waiting' ? '<small style="color:orange">Terminez votre livraison actuelle pour en prendre une autre.</small>' : ''}
+                                ${navButtons}
+                                ${isBusy && o.status === 'waiting' ? '<small style="color:orange;display:block;margin-top:8px">Terminez votre livraison actuelle pour en prendre une autre.</small>' : ''}
                             </div>`;
                     }
                 });
             });
         }
 
-        function markPickedAndNav(clientLat, clientLng, resLat, resLng, orderId) {
+        function markPicked(orderId) {
             const storageKey = `koul_picked_orders_${currentLivreur.id}`;
             let picked = JSON.parse(localStorage.getItem(storageKey) || '[]');
             if(!picked.includes(orderId)) picked.push(orderId);
             localStorage.setItem(storageKey, JSON.stringify(picked));
-            // Ouvrir Google Maps vélo depuis le restaurant vers le client
-            if(clientLat && clientLng) {
-                const origin = (resLat && resLng) ? `${resLat},${resLng}` : '';
-                const dest = `${clientLat},${clientLng}`;
-                const mapsUrl = origin
-                    ? `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${dest}&travelmode=bicycling`
-                    : `https://www.google.com/maps/dir/?api=1&destination=${dest}&travelmode=bicycling`;
-                window.open(mapsUrl, '_blank');
-            }
             renderLivreurOrders();
-        }
-
-        function navToClient(clientLat, clientLng) {
-            if(clientLat && clientLng) {
-                window.open(`https://www.google.com/maps/dir/?api=1&destination=${clientLat},${clientLng}&travelmode=bicycling`, '_blank');
-            }
         }
 
         function takeOrd(rid, oid) {
@@ -1168,10 +1148,7 @@ background:none; color:var(--primary); padding:8px; border-radius:5px; margin-bo
             const r = restaurants.find(x=>x.id===rid); const o = r.orders.find(x=>x.id===oid);
             o.status = 'shipping'; o.livId = currentLivreur.id; o.livName = currentLivreur.name;
             logResEvent(r, `PRISE PAR LIVREUR (${currentLivreur.name})`, o);
-            setNotif("COMMANDE PRISE - DIRECTION LE RESTAURANT");
-            // Ouvrir Google Maps depuis position livreur vers le restaurant (voiture)
-            const dest = (r.lat && r.lng) ? `${r.lat},${r.lng}` : encodeURIComponent(r.name);
-            window.open(`https://www.google.com/maps/dir/?api=1&destination=${dest}&travelmode=driving`, '_blank');
+            setNotif("COMMANDE PRISE");
             renderLivreurOrders(); saveRestaurant(r);
         }
 
